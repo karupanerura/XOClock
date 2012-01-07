@@ -85,10 +85,11 @@ sub load_config {
     $self->config( $config );
 }
 
-sub logging_fh {
+sub logging {
     my $self = shift;
+    my $cb   = shift;
 
-    $self->{_logging_fh} ||= $self->logfile ? do {
+    my $fh = $self->logfile ? do {
         open(my $fh, '>>', $self->logfile) or die $!;
         $fh->autoflush(1);
         $fh;
@@ -97,15 +98,23 @@ sub logging_fh {
         $fh->autoflush(1);
         $fh;
     };
+
+    ## logging
+    $cb->($fh, @_);
+
+    close($fh) if $self->logfile;
 }
 
 sub dispatch {
     my($self, @args) = @_;
 
     local $Log::Minimal::PRINT = sub {
-        my ( $time, $type, $message, $trace,$raw_message) = @_;
-        my $fh = $self->logging_fh;
-        print {$fh} ("$time [$type][$$] $message at $trace\n");
+        $self->logging(
+            sub {
+                my ($fh, $time, $type, $message, $trace, $raw_message) = @_;
+                print {$fh} ("$time [$type][$$] $message at $trace\n");
+            } => @_
+        );
     };
     infof('running on pid: %d.', $$);
     $self->load_config;
@@ -196,12 +205,6 @@ sub version_message {
     return sprintf "%s\n" . "\t%s/%s\n" . "\tperl/%vd on %s\n",
         $self->appname(), ref($self), $VERSION,
         $^V, $Config::Config{archname};
-}
-
-sub DESTOROY {
-    my $self = shift;
-
-    close($self->{_logging_fh}) if $self->{_logging_fh};
 }
 
 1;
