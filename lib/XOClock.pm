@@ -105,7 +105,7 @@ sub dispatch {
     local $Log::Minimal::PRINT = sub {
         my ( $time, $type, $message, $trace,$raw_message) = @_;
         my $fh = $self->logging_fh;
-        print {$fh} ("$time [$type] $message at $trace\n");
+        print {$fh} ("$time [$type][$$] $message at $trace\n");
     };
     infof('running on pid: %d.', $$);
     $self->load_config;
