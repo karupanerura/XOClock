@@ -1,0 +1,14 @@
+#!perl
+use strict;
+use warnings;
+use utf8;
+use XOClock;
+
+my $app = XOClock->new(@ARGV)->run();
+__END__
+
+=head1 DESCRIPTION
+
+See L<XOClock>.
+
+=cut
