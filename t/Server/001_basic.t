@@ -19,7 +19,6 @@ my $args = +{
     hoge => 'fuga'
 };
 
-local $ENV{TZ} = 'JST';
 my $server = Test::TCP->new(
     code => sub {
         my $port = shift;
@@ -43,8 +42,7 @@ my $client = XOClock::Client->new(
 );
 my $res = $client->enqueue(
     name      => 'Mock',
-    datetime  => localtime->strftime('%Y-%m-%d %H:%M:%S'),
-    time_zone => $ENV{TZ},
+    datetime  => (Time::Piece->gmtime + 1)->strftime('%Y-%m-%d %H:%M:%S'),
     args      => $args,
 )->recv;
 is $res, 'ok', 'enqueue success.';
