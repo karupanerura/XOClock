@@ -20,7 +20,11 @@ use Class::Accessor::Lite 0.04 (
         qw/host port/,
         qw/max_workers registered_worker interval/,# from config
     ],
-    rw  => [qw/jsonrpc queue worker running_worker proccess_queue checker/],
+    rw  => [
+        qw/jsonrpc checker/,
+        qw/queue worker/,
+        qw/proccess_queue running_worker proccess_cb/
+    ],
 );
 
 sub new {
@@ -41,6 +45,8 @@ sub init {
 
     $self->worker(+{});
     $self->running_worker(+{});
+    $self->proccess_cb(+{});
+
     $self->queue([]);
     $self->proccess_queue([]);
 
@@ -159,9 +165,9 @@ sub start_worker {
     my($self, $work) = $rule->validate(@_);
 
     $self->run_on_child(
-        $work->{worker}->name => sub {
-            $work->{worker}->run($work->{args})
-        }
+        name  => $work->{worker}->name,
+        code  => sub { $work->{worker}->run($work->{args}) },
+        retry => $work->{worker}->retry_count,
     );
 }
 
@@ -184,17 +190,24 @@ sub pm {
     $self->{pm} ||= Parallel::ForkManager->new($self->max_workers);
 }
 
+sub pm_processes_count { scalar keys %{ shift->pm->{processes} } }
 sub pm_is_working_max {
     my $self = shift;
 
-    keys %{ $self->pm->{processes} } >= $self->max_workers;
+    $self->pm_processes_count >= $self->max_workers;
+}
+sub pm_nothing_children {
+    my $self = shift;
+
+    $self->pm_processes_count == 0;
 }
 
 sub run_on_child {
     state $rule = Data::Validator->new(
-        name => +{ isa => 'Str'     },
-        code => +{ isa => 'CodeRef' },
-    )->with(qw/Method Sequenced/);
+        name  => +{ isa => 'Str'     },
+        code  => +{ isa => 'CodeRef' },
+        retry => +{ isa => 'Int', default => 0 }
+    )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
     if ($self->pm_is_working_max) {## child working max
@@ -206,20 +219,23 @@ sub run_on_child {
         if (my $pid = $self->pm->start) {
             # parent
             infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
+            $self->proccess_cb->{$pid} = sub {
+                my ($pid, $status) = @_;
+
+                infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
+
+                delete $self->running_worker->{$arg->{name}}{$pid};
+                delete $self->proccess_cb->{$pid};
+                delete $self->pm->{processes}{$pid};
+
+                ## dequeue
+                $self->process_dequeue;
+            };
             $self->running_worker->{$arg->{name}}{$pid} = AnyEvent->child(
                 pid => $pid,
-                cb  => sub {
-                    my ($pid, $status) = @_;
-
-                    infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
-
-                    delete $self->running_worker->{$arg->{name}}{$pid};
-                    delete $self->pm->{processes}{$pid};
-
-                    ## dequeue
-                    $self->process_dequeue;
-                }
+                cb  => $self->proccess_cb->{$pid},
             );
+
             return $pid;
         }
         else {
@@ -307,11 +323,27 @@ sub wait_all_workers {
     return unless $self->{pm};
 
     infof('wait all workers.');
-    $self->pm->wait_all_children;
+    $self->_wait_all_workers;
+}
 
+sub _wait_all_workers {
+    my $self = shift;
+
+    $self->wait_all_children;
     if (@{ $self->proccess_queue }) {
         $self->process_dequeue;
-        $self->wait_all_workers;
+        $self->_wait_all_workers;
+    }
+}
+
+sub wait_all_children {
+    my $self = shift;
+
+    until ($self->pm_nothing_children) {
+        my $pid = $self->pm->wait_one_child;
+        if (my $cb = $self->proccess_cb->{$pid}) {
+            $cb->($pid, 0);
+        }
     }
 }
 

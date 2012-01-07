@@ -11,6 +11,8 @@ use Class::Accessor::Lite (
     ro  => [qw/name/],
 );
 
+sub retry_count { 3 }
+
 1;
 __END__
 
