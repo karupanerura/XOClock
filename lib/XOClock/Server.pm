@@ -18,7 +18,7 @@ our $VERSION = '0.01';
 use Class::Accessor::Lite 0.04 (
     ro  => [
         qw/host port/,
-        qw/max_workers registered_worker interval/# from config
+        qw/max_workers registered_worker interval/,# from config
     ],
     rw  => [qw/jsonrpc queue worker running_worker proccess_queue checker/],
 );
@@ -198,9 +198,7 @@ sub run_on_child {
     my($self, $arg) = $rule->validate(@_);
 
     if ($self->pm_is_working_max) {## child working max
-        ## push to queue
-        push @{ $self->proccess_queue } => $arg;
-        warnf(q{child process working max. push to queued '%s'. queue size = %d}, $arg->{name}, scalar(@{ $self->proccess_queue }));
+        $self->process_enqueue($arg);
         return;
     }
     else {## create child process
@@ -213,10 +211,13 @@ sub run_on_child {
                 cb  => sub {
                     my ($pid, $status) = @_;
 
-                    infof(q{finish worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
+                    infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
+
                     delete $self->running_worker->{$arg->{name}}{$pid};
                     delete $self->pm->{processes}{$pid};
-                    $self->run_on_child(shift @{ $self->proccess_queue }) if @{ $self->proccess_queue };
+
+                    ## dequeue
+                    $self->process_dequeue;
                 }
             );
             return $pid;
@@ -226,6 +227,23 @@ sub run_on_child {
             $arg->{code}->($self);
             $self->pm->finish;
         }
+    }
+}
+
+sub process_enqueue {
+    my($self, $arg) = @_;
+
+    warnf(q{child process working max. push to queue '%s'. queue size = %d}, $arg->{name}, scalar(@{ $self->proccess_queue }));
+    push @{ $self->proccess_queue } => $arg;
+}
+
+sub process_dequeue {
+    my $self = shift;
+
+    until ($self->pm_is_working_max) {
+        last unless @{ $self->proccess_queue };
+        ## dequeue
+        $self->run_on_child(shift @{ $self->proccess_queue });
     }
 }
 
@@ -286,8 +304,15 @@ sub close_jsonrpc {
 sub wait_all_workers {
     my $self = shift;
 
+    return unless $self->{pm};
+
     infof('wait all workers.');
-    $self->pm->wait_all_children if $self->{pm};
+    $self->pm->wait_all_children;
+
+    if (@{ $self->proccess_queue }) {
+        $self->process_dequeue;
+        $self->wait_all_workers;
+    }
 }
 
 sub DESTOROY {
