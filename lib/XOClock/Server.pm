@@ -228,6 +228,21 @@ sub run_on_child {
                 delete $self->proccess_cb->{$pid};
                 delete $self->pm->{processes}{$pid};
 
+                unless ($status == 0) {## retry
+                    if ($arg->{retry}) {
+                        my $next_retry = $arg->{retry} - 1;
+
+                        warnf('retry queue. can retry %d more times.', $next_retry);
+                        $self->process_enqueue(+{
+                            %$arg,
+                            retry => $next_retry,
+                        });
+                    }
+                    else {
+                        warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
+                    }
+                }
+
                 ## dequeue
                 $self->process_dequeue;
             };
