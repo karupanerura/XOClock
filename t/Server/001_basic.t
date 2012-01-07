@@ -3,11 +3,11 @@ use strict;
 use warnings;
 use utf8;
 
-use Test::More;
+use Test::More tests => 3;
 use Test::SharedFork;
 use Test::TCP;
 
-use t::TestUtil qw/test_server_config/;
+use t::TestUtil qw/test_server_config ignore_logminimal/;
 use t::TestUtil::Worker::Mock;
 
 use AnyEvent;
@@ -19,36 +19,37 @@ my $args = +{
     hoge => 'fuga'
 };
 
-my $server = Test::TCP->new(
-    code => sub {
-        my $port = shift;
+ignore_logminimal {
+    test_tcp(
+        client => sub {
+            my ($port, $server_pid) = @_;
+            wait_port($port);
 
-        my $cv = AnyEvent->condvar;
-        local $t::TestUtil::Worker::Mock::Callback = sub {
-            my($self, $receved) = @_;
+            my $client = XOClock::Client->new(
+                host => '127.0.0.1',
+                port => $port,
+            );
+            my $res = $client->enqueue(
+                name      => 'Mock',
+                datetime  => (Time::Piece->gmtime + 1)->strftime('%Y-%m-%d %H:%M:%S'),
+                args      => $args,
+            )->recv;
+            is $res, 'ok', 'enqueue success.';
 
-            pass('called worker.');
-            is_deeply $receved, $args, 'args ok.';
-        };
-        my $app  = XOClock::Server->new( test_server_config($port) )->run;
-        $cv->recv;
-    }
-);
+            sleep 2;
+        },
+        server => sub {
+            my $port = shift;
 
-wait_port($server->port);
-my $client = XOClock::Client->new(
-    host => '127.0.0.1',
-    port => $server->port,
-);
-my $res = $client->enqueue(
-    name      => 'Mock',
-    datetime  => (Time::Piece->gmtime + 1)->strftime('%Y-%m-%d %H:%M:%S'),
-    args      => $args,
-)->recv;
-is $res, 'ok', 'enqueue success.';
+            my $cv = AnyEvent->condvar;
+            local $t::TestUtil::Worker::Mock::Callback = sub {
+                my($self, $receved) = @_;
 
-sleep 2;
-$server->stop;
-undef $server;
-
-done_testing;
+                pass('called worker.');
+                is_deeply $receved, $args, 'args ok.';
+            };
+            my $app  = XOClock::Server->new( test_server_config($port) )->run;
+            $cv->recv;
+        },
+    );
+};

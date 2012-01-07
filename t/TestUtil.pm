@@ -4,7 +4,15 @@ use warnings;
 use utf8;
 
 use parent qw/Exporter/;
-our @EXPORT_OK = qw/test_server_config/;
+our @EXPORT_OK = qw/test_server_config ignore_logminimal/;
+use Log::Minimal ();
+
+sub ignore_logminimal (&) {## no critic
+    my $code = shift;
+
+    local $Log::Minimal::PRINT = sub {};
+    $code->();
+}
 
 sub test_server_config {
     my $port = shift;
