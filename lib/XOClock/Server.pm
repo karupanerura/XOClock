@@ -75,7 +75,7 @@ sub enqueue {
     state $rule = Data::Validator->new(
         name      => +{ isa => 'Str' },
         datetime  => +{ isa => 'Str' },
-        time_zone => +{ isa => 'Str', default => 1 },
+        time_zone => +{ isa => 'Str', optional => 1 },
         args      => +{ isa => 'HashRef' },
     )->with(qw/Method NoThrow/);
     my($self, $arg) = $rule->validate(@_);
