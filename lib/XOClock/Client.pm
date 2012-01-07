@@ -7,6 +7,7 @@ use utf8;
 our $VERSION = '0.01';
 
 use AnyEvent::JSONRPC::Lite::Client;
+use Data::Validator;
 
 use Class::Accessor::Lite (
     ro => [qw/host port/],
