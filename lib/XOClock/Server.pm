@@ -92,7 +92,7 @@ sub enqueue {
     }
     elsif ( my $worker = $self->get_worker($arg->{name}) ) {
         my $tp = do {
-            local $ENV{TZ} = $arg->{time_zone};
+            local $ENV{TZ} = exists($arg->{time_zone}) ? $arg->{time_zone} : undef;
 
             my $proto = $ENV{TZ} ? Time::Piece->localtime : 'Time::Piece';
             $proto->strptime($arg->{datetime}, '%Y-%m-%d %H:%M:%S');
@@ -113,7 +113,8 @@ sub enqueue {
         else {
             warnf(
                 q{Cannot enqueue. already past '%s'. (Worker:'%s', time_zone '%s')},
-                $arg->{datetime}, $arg->{name}, $arg->{time_zone}
+                $arg->{datetime}, $arg->{name},
+                exists($arg->{time_zone}) ? $arg->{time_zone} : 'GMT'
             );
 
             # enqueue failed
