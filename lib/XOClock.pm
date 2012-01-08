@@ -129,7 +129,7 @@ sub dispatch {
             cb     => sub {
                 # graceful shutdown
                 critf(q{signal '%s' trapped.}, $signal);
-                infof(q{graceful shutdown.});
+                warnf(q{graceful shutdown.});
                 $server->finalize;
                 $cv->send;
             },
@@ -139,29 +139,35 @@ sub dispatch {
         signal => 'HUP',
         cb     => sub {
             critf(q{signal '%s' trapped.}, 'HUP');
-            infof(q{graceful restart.});
+            warnf(q{graceful restart.});
             # TODO
             # graceful restart
             $self->reload;
             my $new_server = $self->create_server;
 
             # stop
-            infof(q{stop old server.});
+            warnf(q{stop old server.});
             $server->stop_dequeue;
-            foreach my $accessor (qw/queue process_queue jsonrpc/) {
-                $new_server->$accessor($server->$accessor);
-                $server->$accessor(
-                    $accessor eq 'queue'         ? []:
-                    $accessor eq 'process_queue' ? []:
-                    undef
-                );
+
+            warnf(q{enqueue target change to new server.});
+            $server->jsonrpc->reg_cb( $new_server->create_callback );
+            $new_server->jsonrpc($server->jsonrpc);
+            $server->jsonrpc(undef);
+
+            warnf(q{moving a queue from old server to new server.});
+            foreach my $accessor (qw/queue process_queue/) {
+                push @{ $new_server->$accessor } => @{ $server->$accessor };
+                $server->$accessor([]);
             }
+            $new_server->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $new_server->queue } ]);
+
+            warnf(q{old server finalize.});
             $server->finalize;
             $server = $new_server;
-            infof(q{stop old server finish.});
+            warnf(q{stoped old server.});
 
             # start
-            infof(q{start new server.});
+            warnf(q{start new server.});
             $server->run(
                 create_jsonrpc_server => 0,
             );
