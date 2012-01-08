@@ -161,8 +161,8 @@ sub dispatch {
             }
             $new_server->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $new_server->queue } ]);
 
-            warnf(q{old server finalize.});
-            $server->finalize;
+            warnf(q{old server finalize. wait all workers.});
+            $server->wait_all_workers;
             $server = $new_server;
             warnf(q{stoped old server.});
 
