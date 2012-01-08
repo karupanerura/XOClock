@@ -365,7 +365,7 @@ sub wait_all_children {
 
     until ($self->pm_nothing_children) {
         my $pid = $self->pm->wait_one_child;
-        if (my $cb = $self->process1_cb->{$pid}) {
+        if (my $cb = $self->process_cb->{$pid}) {
             $cb->($pid, 0);
         }
     }
