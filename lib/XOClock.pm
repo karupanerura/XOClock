@@ -202,8 +202,6 @@ sub reload {
     my $self = shift;
     infof(q{reload config.});
     $self->load_config;
-    infof(q{reload worker.});
-    # TODO
 }
 
 sub do_help {
