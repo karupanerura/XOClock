@@ -117,8 +117,6 @@ sub enqueue {
                 args   => $arg->{args},
                 epoch  => $tp->epoch,
             };
-
-            ### FIXME: sort required?
             $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
 
             # enqueue success
