@@ -37,9 +37,19 @@ requires 'Scalar::Util';
 requires 'Data::Validator';
 requires 'IO::Handle';
 requires 'YAML::Syck';
+requires 'Class::Load';
+requires 'Exporter';
+requires 'parent';
 
-test_requires 'Test::More'     => '0.88';
-test_requires 'Test::Requires' => '0.06';
+test_requires 'Test::More'       => '0.88';
+test_requires 'Test::Requires'   => '0.06';
+test_requires 'Time::Piece'      => '1.20';
+test_requires 'Test::SharedFork';
+test_requires 'Test::TCP';
+test_requires 'Log::Minimal';
+test_requires 'Exporter';
+test_requires 'AnyEvent';
+test_requires 'parent';
 
 auto_set_repository;
 
