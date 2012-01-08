@@ -120,13 +120,7 @@ sub dispatch {
     $self->load_config;
 
     my $cv = AnyEvent->condvar;
-    my $server = XOClock::Server->new(
-        host              => $self->host                  || '0.0.0.0',
-        port              => $self->port                  || 5312,
-        max_workers       => $self->config->{max_workers} || 4,
-        registered_worker => $self->config->{worker}      || +{},
-        interval          => $self->config->{interval}    || 1,
-    );
+    my $server = $self->create_server;
 
     my @signal_guard;
     foreach my $signal (qw/INT TERM QUIT/) {
@@ -148,6 +142,30 @@ sub dispatch {
             infof(q{graceful restart.});
             # TODO
             # graceful restart
+            $self->reload;
+            my $new_server = $self->create_server;
+
+            # stop
+            infof(q{stop old server.});
+            $server->stop_dequeue;
+            foreach my $accessor (qw/queue process_queue jsonrpc/) {
+                $new_server->$accessor($server->$accessor);
+                $server->$accessor(
+                    $accessor eq 'queue'         ? []:
+                    $accessor eq 'process_queue' ? []:
+                    undef
+                );
+            }
+            $server->finalize;
+            $server = $new_server;
+            infof(q{stop old server finish.});
+
+            # start
+            infof(q{start new server.});
+            $server->run(
+                create_jsonrpc_server => 0,
+            );
+            $server->process_dequeue if ($server->process_queue);
         },
     );
 
@@ -160,6 +178,26 @@ sub dispatch {
     infof('server shutdown.');
 
     return;
+}
+
+sub create_server {
+    my $self = shift;
+
+    return XOClock::Server->new(
+        host              => $self->host                  || '0.0.0.0',
+        port              => $self->port                  || 5312,
+        max_workers       => $self->config->{max_workers} || 4,
+        registered_worker => $self->config->{worker}      || +{},
+        interval          => $self->config->{interval}    || 1,
+    );
+}
+
+sub reload {
+    my $self = shift;
+    infof(q{reload config.});
+    $self->load_config;
+    infof(q{reload worker.});
+    # TODO
 }
 
 sub do_help {
