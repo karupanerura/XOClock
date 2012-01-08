@@ -23,7 +23,7 @@ use Class::Accessor::Lite 0.04 (
     rw  => [
         qw/jsonrpc checker/,
         qw/queue worker/,
-        qw/proccess_queue running_worker proccess_cb/
+        qw/process_queue running_worker process_cb/
     ],
 );
 
@@ -45,34 +45,42 @@ sub init {
 
     $self->worker(+{});
     $self->running_worker(+{});
-    $self->proccess_cb(+{});
+    $self->process_cb(+{});
 
     $self->queue([]);
-    $self->proccess_queue([]);
+    $self->process_queue([]);
 
     return $self;
 }
 
 sub run {
-    my $self = shift;
-
-    $self->jsonrpc(
-        $self->create_jsonrpc_server(
-            host => $self->host,
-            port => $self->port,
-        )
-    );
-
+    state $rule = Data::Validator->new(
+        create_jsonrpc_server => +{ isa => 'Bool', default => 1 },
+        create_checker        => +{ isa => 'Bool', default => 1 },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
     weaken($self);
-    $self->checker(
-        AnyEvent->timer(
-            interval => $self->interval,
-            cb       => sub {
-                my $started_job_count = $self->dequeue;
-                infof('job started %d process.', $started_job_count) if $started_job_count;
-            }
-        )
-    );
+
+    if ($arg->{create_jsonrpc_server}) {
+        $self->jsonrpc(
+            $self->create_jsonrpc_server(
+                host => $self->host,
+                port => $self->port,
+            )
+        );
+    }
+
+    if ($arg->{create_checker}) {
+        $self->checker(
+            AnyEvent->timer(
+                interval => $self->interval,
+                cb       => sub {
+                    my $started_job_count = $self->dequeue;
+                    infof('job started %d process.', $started_job_count) if $started_job_count;
+                }
+            )
+        );
+    }
 
     return $self;
 }
@@ -190,6 +198,7 @@ sub pm {
     $self->{pm} ||= Parallel::ForkManager->new($self->max_workers);
 }
 
+sub in_child { shift->pm->{in_child} }
 sub pm_processes_count { scalar keys %{ shift->pm->{processes} } }
 sub pm_is_working_max {
     my $self = shift;
@@ -219,13 +228,13 @@ sub run_on_child {
         if (my $pid = $self->pm->start) {
             # parent
             infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
-            $self->proccess_cb->{$pid} = sub {
+            $self->process_cb->{$pid} = sub {
                 my ($pid, $status) = @_;
 
                 infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
 
                 delete $self->running_worker->{$arg->{name}}{$pid};
-                delete $self->proccess_cb->{$pid};
+                delete $self->process_cb->{$pid};
                 delete $self->pm->{processes}{$pid};
 
                 unless ($status == 0) {## retry
@@ -248,14 +257,14 @@ sub run_on_child {
             };
             $self->running_worker->{$arg->{name}}{$pid} = AnyEvent->child(
                 pid => $pid,
-                cb  => $self->proccess_cb->{$pid},
+                cb  => $self->process_cb->{$pid},
             );
 
             return $pid;
         }
         else {
             # child
-            $arg->{code}->($self);
+            $arg->{code}->($self, );
             $self->pm->finish;
         }
     }
@@ -264,17 +273,17 @@ sub run_on_child {
 sub process_enqueue {
     my($self, $arg) = @_;
 
-    warnf(q{child process working max. push to queue '%s'. queue size = %d}, $arg->{name}, scalar(@{ $self->proccess_queue }));
-    push @{ $self->proccess_queue } => $arg;
+    warnf(q{child process working max. push to queue '%s'. queue size = %d}, $arg->{name}, scalar(@{ $self->process_queue }));
+    push @{ $self->process_queue } => $arg;
 }
 
 sub process_dequeue {
     my $self = shift;
 
     until ($self->pm_is_working_max) {
-        last unless @{ $self->proccess_queue };
+        last unless @{ $self->process_queue };
         ## dequeue
-        $self->run_on_child(shift @{ $self->proccess_queue });
+        $self->run_on_child(shift @{ $self->process_queue });
     }
 }
 
@@ -345,7 +354,7 @@ sub _wait_all_workers {
     my $self = shift;
 
     $self->wait_all_children;
-    if (@{ $self->proccess_queue }) {
+    if (@{ $self->process_queue }) {
         $self->process_dequeue;
         $self->_wait_all_workers;
     }
@@ -356,7 +365,7 @@ sub wait_all_children {
 
     until ($self->pm_nothing_children) {
         my $pid = $self->pm->wait_one_child;
-        if (my $cb = $self->proccess_cb->{$pid}) {
+        if (my $cb = $self->process1_cb->{$pid}) {
             $cb->($pid, 0);
         }
     }
