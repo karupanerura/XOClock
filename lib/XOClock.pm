@@ -78,7 +78,7 @@ sub load_config {
 
     my $config = $self->config_file ? do {
         local $YAML::Syck::ImplicitUnicode = 1;
-        infof('load config from', $self->config_file);
+        infof(q{load config from '%s'.}, $self->config_file);
         YAML::Syck::LoadFile($self->config_file);
     } : +{};
 
