@@ -184,8 +184,8 @@ sub get_worker {
     my($self, $arg) = $rule->validate(@_);
 
     $self->worker->{$arg->{name}} ||= sub {
+        my $class = $self->registered_worker->{$arg->{name}};
         if ( Class::Load::try_load_class($class) ) {
-            my $class = $self->registered_worker->{$arg->{name}};
             infof(q{Worker load success. class: %s, name: %s}, $class, $arg->{name});
             return $class->new(name => $arg->{name});
         }
