@@ -11,7 +11,7 @@ use Time::Piece 1.20 ();
 use Parallel::ForkManager;
 use Log::Minimal;
 use Data::Validator 0.04;
-use Module::Load;
+use Class::Load;
 
 our $VERSION = '0.01';
 
@@ -183,11 +183,17 @@ sub get_worker {
     )->with(qw/Method Sequenced/);
     my($self, $arg) = $rule->validate(@_);
 
-    $self->worker->{$arg->{name}} ||= do {
-        my $class = $self->registered_worker->{$arg->{name}};
-        load($class);
-        $class->new(name => $arg->{name});
-    } if exists($self->registered_worker->{$arg->{name}});
+    $self->worker->{$arg->{name}} ||= sub {
+        if ( Class::Load::try_load_class($class) ) {
+            my $class = $self->registered_worker->{$arg->{name}};
+            infof(q{Worker load success. class: %s, name: %s}, $class, $arg->{name});
+            return $class->new(name => $arg->{name});
+        }
+        else {
+            critf(q{Worker load failed. class: %s, name: %s}, $class, $arg->{name});
+            return;
+        }
+    }->() if exists($self->registered_worker->{$arg->{name}});
 }
 
 sub pm {
