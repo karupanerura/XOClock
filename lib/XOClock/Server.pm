@@ -8,7 +8,7 @@ use AnyEvent;
 use AnyEvent::JSONRPC::Lite::Server;
 use Scalar::Util qw/weaken/;
 use Time::Piece 1.20 ();
-use Parallel::ForkManager;
+use AnyEvent::ForkManager;
 use Log::Minimal;
 use Data::Validator 0.04;
 use Class::Load;
@@ -23,7 +23,6 @@ use Class::Accessor::Lite 0.04 (
     rw  => [
         qw/jsonrpc checker/,
         qw/queue worker/,
-        qw/process_queue running_worker process_cb/
     ],
 );
 
@@ -44,11 +43,7 @@ sub init {
     my $self = shift;
 
     $self->worker(+{});
-    $self->running_worker(+{});
-    $self->process_cb(+{});
-
     $self->queue([]);
-    $self->process_queue([]);
 
     return $self;
 }
@@ -199,21 +194,47 @@ sub get_worker {
 sub pm {
     my $self = shift;
 
-    $self->{pm} ||= Parallel::ForkManager->new($self->max_workers);
+    $self->{pm} ||= do {
+        my $pm = AnyEvent::ForkManager->new(max_workers => $self->max_workers);
+
+        # set callback
+        $pm->on_finish(sub {
+            my ($pm, $pid, $status, $self, $arg) = @_;
+            infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
+
+            unless ($status == 0) {## retry
+                if ($arg->{retry}) {
+                    my $next_retry = $arg->{retry} - 1;
+
+                    warnf('retry queue. can retry %d more times.', $next_retry);
+                    $self->run_on_child(+{
+                        %$arg,
+                        retry => $next_retry,
+                    });
+                }
+                else {
+                    warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
+                }
+            }
+        });
+        $pm->on_working_max(sub{
+            my ($pm, $self, $arg) = @_;
+            warnf(q{child process working max. queued '%s'.}, $arg->{name});
+        });
+        $pm->on_enqueue(sub{
+            my ($pm, $self, $arg) = @_;
+            infof(q{push to queue '%s'. queue size = %d}, $arg->{name}, $pm->num_queues);
+        });
+        $pm->on_dequeue(sub{
+            my ($pm, $self, $arg) = @_;
+            infof(q{shift queue '%s'. queue size = %d}, $arg->{name}, $pm->num_queues);
+        });
+
+        $pm;
+    };
 }
 
-sub in_child { shift->pm->{in_child} }
-sub pm_processes_count { scalar keys %{ shift->pm->{processes} } }
-sub pm_is_working_max {
-    my $self = shift;
-
-    $self->pm_processes_count >= $self->max_workers;
-}
-sub pm_nothing_children {
-    my $self = shift;
-
-    $self->pm_processes_count == 0;
-}
+sub is_child { shift->pm->is_child }
 
 sub run_on_child {
     state $rule = Data::Validator->new(
@@ -223,72 +244,15 @@ sub run_on_child {
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
-    if ($self->pm_is_working_max) {## child working max
-        $self->process_enqueue($arg);
-        return;
-    }
-    else {## create child process
-        weaken($self);
-        if (my $pid = $self->pm->start) {
-            # parent
-            infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
-            $self->process_cb->{$pid} = sub {
-                my ($pid, $status) = @_;
+    $self->pm->start(
+        cb => sub {
+            my($pm, $self, $arg) = @_;
+            infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $$);
 
-                infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
-
-                delete $self->running_worker->{$arg->{name}}{$pid};
-                delete $self->process_cb->{$pid};
-                delete $self->pm->{processes}{$pid};
-
-                unless ($status == 0) {## retry
-                    if ($arg->{retry}) {
-                        my $next_retry = $arg->{retry} - 1;
-
-                        warnf('retry queue. can retry %d more times.', $next_retry);
-                        $self->process_enqueue(+{
-                            %$arg,
-                            retry => $next_retry,
-                        });
-                    }
-                    else {
-                        warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
-                    }
-                }
-
-                ## dequeue
-                $self->process_dequeue;
-            };
-            $self->running_worker->{$arg->{name}}{$pid} = AnyEvent->child(
-                pid => $pid,
-                cb  => $self->process_cb->{$pid},
-            );
-
-            return $pid;
-        }
-        else {
-            # child
-            $arg->{code}->($self, );
-            $self->pm->finish;
-        }
-    }
-}
-
-sub process_enqueue {
-    my($self, $arg) = @_;
-
-    warnf(q{child process working max. push to queue '%s'. queue size = %d}, $arg->{name}, scalar(@{ $self->process_queue }));
-    push @{ $self->process_queue } => $arg;
-}
-
-sub process_dequeue {
-    my $self = shift;
-
-    until ($self->pm_is_working_max) {
-        last unless @{ $self->process_queue };
-        ## dequeue
-        $self->run_on_child(shift @{ $self->process_queue });
-    }
+            $arg->{code}->($self);
+        },
+        args => [$self, $arg],
+    );
 }
 
 sub create_jsonrpc_server {
@@ -323,6 +287,58 @@ sub create_callback {
     );
 }
 
+sub graceful_shutdown {
+    my $self = shift;
+
+    warnf(q{graceful shutdown.});
+    $self->finalize;
+}
+
+sub graceful_restart {
+    state $rule = Data::Validator->new(
+        new_config => +{ isa => 'HashRef' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+    my $class = Scalar::Util::blessed($self);
+
+    warnf(q{graceful restart.});
+
+    my $new = $class->new(%{ $arg->{new_config} });
+
+    # stop
+    warnf(q{stop old server.});
+    $self->stop_dequeue;
+
+    warnf(q{enqueue target change to new server.});
+    $self->jsonrpc->reg_cb( $new->create_callback );
+    $new->jsonrpc($self->jsonrpc);
+    $self->jsonrpc(undef);
+
+    warnf(q{moving a queue from old server to new server.});
+    push @{ $new->queue } => @{ $self->queue };
+    if ($self->{pm}) {
+        push @{ $new->pm->process_queue } => @{ $self->pm->process_queue };
+        $self->pm->process_queue([]);
+    }
+
+    # re-sort
+    $new->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $new->queue } ]);
+
+    warnf(q{old server finalize. wait all workers.});
+    $self->wait_all_workers;
+    $_[0] = $self = $new;
+    warnf(q{stoped old server.});
+
+    # start
+    warnf(q{start new server.});
+    $self->run(
+        create_jsonrpc_server => 0,
+    );
+    $self->pm->dequeue if ($self->{pm} and $self->pm->process_queue);
+
+    return $self;
+}
+
 sub finalize {
     my $self = shift;
 
@@ -336,6 +352,7 @@ sub stop_dequeue {
 
     infof('stop dequeue.');
     $self->checker(undef);
+    infof('stop dequeue ok.');
 }
 
 sub close_jsonrpc {
@@ -343,6 +360,7 @@ sub close_jsonrpc {
 
     infof('close jsonrpc.');
     $self->jsonrpc(undef);
+    infof('close jsonrpc ok.');
 }
 
 sub wait_all_workers {
@@ -351,28 +369,19 @@ sub wait_all_workers {
     return unless $self->{pm};
 
     infof('wait all workers.');
-    $self->_wait_all_workers;
-}
-
-sub _wait_all_workers {
-    my $self = shift;
-
-    $self->wait_all_children;
-    if (@{ $self->process_queue }) {
-        $self->process_dequeue;
-        $self->_wait_all_workers;
-    }
+    $self->wait_all_children(
+        cb => sub {
+            my($pm) = @_;
+            infof('wait all workers ok.');
+        },
+        blocking => 1
+    );
 }
 
 sub wait_all_children {
     my $self = shift;
 
-    until ($self->pm_nothing_children) {
-        my $pid = $self->pm->wait_one_child;
-        if (my $cb = $self->process_cb->{$pid}) {
-            $cb->($pid, 0);
-        }
-    }
+    $self->pm->wait_all_children(@_);
 }
 
 sub DESTOROY {

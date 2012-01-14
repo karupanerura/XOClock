@@ -29,7 +29,7 @@ all_from 'lib/XOClock.pm';
 requires 'Getopt::Long' => '2.37';
 requires 'Class::Accessor::Lite' => '0.04';
 requires 'Time::Piece' => '1.20';
-requires 'Parallel::ForkManager';
+requires 'AnyEvent::ForkManager';
 requires 'Log::Minimal';
 requires 'AnyEvent';
 requires 'AnyEvent::JSONRPC::Lite';

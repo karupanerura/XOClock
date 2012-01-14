@@ -129,8 +129,7 @@ sub dispatch {
             cb     => sub {
                 # graceful shutdown
                 critf(q{signal '%s' trapped.}, $signal);
-                warnf(q{graceful shutdown.});
-                $server->finalize;
+                $server->graceful_shutdown;
                 $cv->send;
             },
         );
@@ -140,38 +139,11 @@ sub dispatch {
         cb     => sub {
             critf(q{signal '%s' trapped.}, 'HUP');
             warnf(q{graceful restart.});
-            # TODO
             # graceful restart
             $self->reload;
-            my $new_server = $self->create_server;
-
-            # stop
-            warnf(q{stop old server.});
-            $server->stop_dequeue;
-
-            warnf(q{enqueue target change to new server.});
-            $server->jsonrpc->reg_cb( $new_server->create_callback );
-            $new_server->jsonrpc($server->jsonrpc);
-            $server->jsonrpc(undef);
-
-            warnf(q{moving a queue from old server to new server.});
-            foreach my $accessor (qw/queue process_queue/) {
-                push @{ $new_server->$accessor } => @{ $server->$accessor };
-                $server->$accessor([]);
-            }
-            $new_server->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $new_server->queue } ]);
-
-            warnf(q{old server finalize. wait all workers.});
-            $server->wait_all_workers;
-            $server = $new_server;
-            warnf(q{stoped old server.});
-
-            # start
-            warnf(q{start new server.});
-            $server->run(
-                create_jsonrpc_server => 0,
+            $server->graceful_restart(
+                new_config => +{ $self->create_server_config },
             );
-            $server->process_dequeue if ($server->process_queue);
         },
     );
 
@@ -189,7 +161,13 @@ sub dispatch {
 sub create_server {
     my $self = shift;
 
-    return XOClock::Server->new(
+    return XOClock::Server->new($self->create_server_config);
+}
+
+sub create_server_config {
+    my $self = shift;
+
+    return (
         host              => $self->host                  || '0.0.0.0',
         port              => $self->port                  || 5312,
         max_workers       => $self->config->{max_workers} || 4,
