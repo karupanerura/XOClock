@@ -6,11 +6,6 @@ use utf8;
 
 our $VERSION = '0.01';
 
-use Class::Accessor::Lite (
-    new => 1,
-    ro  => [qw/name/],
-);
-
 sub retry_count { 3 }
 
 1;

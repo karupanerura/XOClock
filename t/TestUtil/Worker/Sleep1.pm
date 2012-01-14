@@ -6,7 +6,7 @@ use utf8;
 use parent qw/XOClock::Worker/;
 
 sub run {
-    my($self, $args) = @_;
+    my($class, $args) = @_;
 
     sleep 1;
 }

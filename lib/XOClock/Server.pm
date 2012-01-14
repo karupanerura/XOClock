@@ -117,7 +117,7 @@ sub enqueue {
 
 sub _enqueue {
     state $rule = Data::Validator->new(
-        worker    => +{ isa => 'XOClock::Worker' },
+        worker    => +{ isa => 'HashRef[Str]' },
         datetime  => +{ isa => 'Str' },
         time_zone => +{ isa => 'Str', optional => 1 },
         args      => +{ isa => 'HashRef' },
@@ -175,16 +175,26 @@ sub dequeue {
 
 sub start_worker {
     state $rule = Data::Validator->new(
-        worker => +{ isa => 'XOClock::Worker' },
-        args   => +{ isa => 'HashRef'         },
-        epoch  => +{ isa => 'Int'             },
+        worker => +{ isa => 'HashRef[Str]' },
+        args   => +{ isa => 'HashRef'      },
+        epoch  => +{ isa => 'Int'          },
     )->with(qw/Method/);
     my($self, $work) = $rule->validate(@_);
 
     $self->run_on_child(
-        name  => $work->{worker}->name,
-        code  => sub { $work->{worker}->run($work->{args}) },
-        retry => $work->{worker}->retry_count,
+        name  => $work->{worker}{name},
+        code  => sub {
+            my $class = $work->{worker}{class};
+            if ( Class::Load::try_load_class($class) ) {
+                infof(q{Worker load success. class: %s, name: %s}, $class, $work->{worker}{name});
+                $class->run($work->{args});
+            }
+            else {
+                critf(q{Worker load failed. class: %s, name: %s}, $class, $work->{worker}{name});
+                return;
+            }
+        },
+        retry => $work->{worker}{class}->retry_count,
     );
 }
 
@@ -194,17 +204,10 @@ sub get_worker {
     )->with(qw/Method Sequenced/);
     my($self, $arg) = $rule->validate(@_);
 
-    $self->worker->{$arg->{name}} ||= sub {
-        my $class = $self->registered_worker->{$arg->{name}};
-        if ( Class::Load::try_load_class($class) ) {
-            infof(q{Worker load success. class: %s, name: %s}, $class, $arg->{name});
-            return $class->new(name => $arg->{name});
-        }
-        else {
-            critf(q{Worker load failed. class: %s, name: %s}, $class, $arg->{name});
-            return;
-        }
-    }->() if exists($self->registered_worker->{$arg->{name}});
+    $self->worker->{$arg->{name}} ||= +{
+        class => $self->registered_worker->{$arg->{name}},
+        name  => $arg->{name},
+    } if exists($self->registered_worker->{$arg->{name}});
 }
 
 sub pm {

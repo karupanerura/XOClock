@@ -7,9 +7,9 @@ use parent qw/XOClock::Worker/;
 our $Callback = sub { sleep 1 };
 
 sub run {
-    my($self, $args) = @_;
+    my($class, $args) = @_;
 
-    $self->$Callback($args);
+    $class->$Callback($args);
 }
 
 1;
