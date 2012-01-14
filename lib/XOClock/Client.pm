@@ -43,7 +43,7 @@ sub enqueue {
         datetime  => +{ isa => 'Str' },
         time_zone => +{ isa => 'Str', optional => 1 },
         args      => +{ isa => 'HashRef' },
-    )->with(qw/Method NoThrow/);
+    )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
     $self->jsonrpc->call(enqueue => $arg);
