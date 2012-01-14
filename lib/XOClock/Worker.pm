@@ -6,8 +6,6 @@ use utf8;
 
 our $VERSION = '0.01';
 
-sub retry_count { 3 }
-
 1;
 __END__
 

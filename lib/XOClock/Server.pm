@@ -196,7 +196,6 @@ sub start_worker {
                 return;
             }
         },
-        retry => $work->{worker}{class}->retry_count,
     );
 }
 
@@ -236,19 +235,8 @@ sub create_pm_callback {
             infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
             delete $self->running_workers->{$arg->{name}}{$pid};
 
-            unless ($status == 0) {## retry
-                if ($arg->{retry}) {
-                    my $next_retry = $arg->{retry} - 1;
-
-                    warnf('retry queue. can retry %d more times.', $next_retry);
-                    $self->run_on_child(+{
-                        %$arg,
-                        retry => $next_retry,
-                    });
-                }
-                else {
-                    warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
-                }
+            unless ($status == 0) {
+                warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
             }
         },
         on_working_max => sub {
@@ -272,7 +260,6 @@ sub run_on_child {
     state $rule = Data::Validator->new(
         name  => +{ isa => 'Str'     },
         code  => +{ isa => 'CodeRef' },
-        retry => +{ isa => 'Int', default => 0 }
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
