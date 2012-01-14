@@ -227,7 +227,7 @@ sub create_pm_callback {
         on_start => sub {
             my ($pm, $pid, $self, $arg) = @_;
             infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
-        }
+        },
         on_finish => sub {
             my ($pm, $pid, $status, $self, $arg) = @_;
             infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
