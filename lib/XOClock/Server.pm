@@ -23,6 +23,7 @@ use Class::Accessor::Lite 0.04 (
     rw  => [
         qw/jsonrpc checker/,
         qw/queue worker/,
+        qw/running_workers/,
     ],
 );
 
@@ -44,6 +45,7 @@ sub init {
 
     $self->worker(+{});
     $self->queue([]);
+    $self->running_workers(+{});
 
     return $self;
 }
@@ -227,10 +229,12 @@ sub create_pm_callback {
         on_start => sub {
             my ($pm, $pid, $self, $arg) = @_;
             infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
+            $self->running_workers->{$arg->{name}}{$pid} = 1;
         },
         on_finish => sub {
             my ($pm, $pid, $status, $self, $arg) = @_;
             infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
+            delete $self->running_workers->{$arg->{name}}{$pid};
 
             unless ($status == 0) {## retry
                 if ($arg->{retry}) {
