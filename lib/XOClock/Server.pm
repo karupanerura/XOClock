@@ -213,11 +213,22 @@ sub get_worker {
 sub pm {
     my $self = shift;
 
-    $self->{pm} ||= do {
-        my $pm = AnyEvent::ForkManager->new(max_workers => $self->max_workers);
+    $self->{pm} ||=
+        AnyEvent::ForkManager->new(
+            max_workers => $self->max_workers,
+            $self->create_pm_callback,
+        );
+}
 
-        # set callback
-        $pm->on_finish(sub {
+sub create_pm_callback {
+    my $self = shift;
+
+    return (
+        on_start => sub {
+            my ($pm, $pid, $self, $arg) = @_;
+            infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
+        }
+        on_finish => sub {
             my ($pm, $pid, $status, $self, $arg) = @_;
             infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
 
@@ -235,22 +246,20 @@ sub pm {
                     warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
                 }
             }
-        });
-        $pm->on_working_max(sub{
+        },
+        on_working_max => sub {
             my ($pm, $self, $arg) = @_;
             warnf(q{child process working max. queued '%s'.}, $arg->{name});
-        });
-        $pm->on_enqueue(sub{
+        },
+        on_enqueue => sub {
             my ($pm, $self, $arg) = @_;
             infof(q{push to queue '%s'. queue size = %d}, $arg->{name}, $pm->num_queues);
-        });
-        $pm->on_dequeue(sub{
+        },
+        on_dequeue => sub{
             my ($pm, $self, $arg) = @_;
             infof(q{shift queue '%s'. queue size = %d}, $arg->{name}, $pm->num_queues);
-        });
-
-        $pm;
-    };
+        }
+    );
 }
 
 sub is_child { shift->pm->is_child }
@@ -266,7 +275,6 @@ sub run_on_child {
     $self->pm->start(
         cb => sub {
             my($pm, $self, $arg) = @_;
-            infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $$);
 
             $arg->{code}->($self);
         },
