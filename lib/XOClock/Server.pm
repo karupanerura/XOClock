@@ -7,11 +7,11 @@ use utf8;
 use AnyEvent;
 use AnyEvent::JSONRPC::Lite::Server;
 use Scalar::Util qw/weaken/;
-use Time::Piece 1.20 ();
 use AnyEvent::ForkManager;
 use Log::Minimal;
 use Data::Validator 0.04;
 use Class::Load;
+use XOClock::Util ();
 
 our $VERSION = '0.01';
 
@@ -100,36 +100,52 @@ sub enqueue {
         return;
     }
     elsif ( my $worker = $self->get_worker($arg->{name}) ) {
-        my $tp = do {
-            local $ENV{TZ} = exists($arg->{time_zone}) ? $arg->{time_zone} : undef;
-
-            my $proto = $ENV{TZ} ? Time::Piece->localtime : 'Time::Piece';
-            $proto->strptime($arg->{datetime}, '%Y-%m-%d %H:%M:%S');
-        };
-        if ($tp->epoch >= time) {
-            push @{ $self->queue } => +{
-                worker => $worker,
-                args   => $arg->{args},
-                epoch  => $tp->epoch,
-            };
-            $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
-
-            # enqueue success
-            return 1;
-        }
-        else {
-            warnf(
-                q{Cannot enqueue. already past '%s'. (Worker:'%s', time_zone '%s')},
-                $arg->{datetime}, $arg->{name},
-                exists($arg->{time_zone}) ? $arg->{time_zone} : 'GMT'
-            );
-
-            # enqueue failed
-            return;
-        }
+        return $self->_enqueue(
+            worker   => $worker,
+            datetime => $arg->{datetime},
+            exists($arg->{time_zone}) ? (time_zone => $arg->{time_zone}) : (),
+            args     => $arg->{args},
+        );
     }
     else {
         warnf(q{Worker '%s' is not registered.}, $arg->{name});
+
+        # enqueue failed
+        return;
+    }
+}
+
+sub _enqueue {
+    state $rule = Data::Validator->new(
+        worker    => +{ isa => 'XOClock::Worker' },
+        datetime  => +{ isa => 'Str' },
+        time_zone => +{ isa => 'Str', optional => 1 },
+        args      => +{ isa => 'HashRef' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    my $tp = XOClock::Util::strptime(
+        str    => $arg->{datetime},
+        format => '%Y-%m-%d %H:%M:%S',
+        exists($arg->{time_zone}) ? (time_zone => $arg->{time_zone}) : ()
+    );
+    if ($tp->epoch >= time) {
+        push @{ $self->queue } => +{
+            worker => $arg->{worker},
+            args   => $arg->{args},
+            epoch  => $tp->epoch,
+        };
+        $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
+
+        # enqueue success
+        return 1;
+    }
+    else {
+        warnf(
+            q{Cannot enqueue. already past '%s'. (Worker:'%s', time_zone '%s')},
+            $arg->{datetime}, $arg->{name},
+            exists($arg->{time_zone}) ? $arg->{time_zone} : 'GMT'
+        );
 
         # enqueue failed
         return;
