@@ -8,9 +8,10 @@ our $VERSION = '0.01';
 
 use Getopt::Long ();
 use XOClock::Server;
+use XOClock::Admin::Server;
 use AnyEvent;
 use Class::Accessor::Lite 0.04 (
-    ro => [qw/host port logfile config_file/],
+    ro => [qw/host port admin_host admin_port logfile config_file/],
     rw => [qw/config/],
 );
 use Log::Minimal;
@@ -21,6 +22,8 @@ sub getopt_spec {
     return(
         'host=s',
         'port=i',
+        'admin_host=s',
+        'admin_port=i',
         'logfile=s',
         'config_file=s',
         'version',
@@ -119,8 +122,9 @@ sub dispatch {
     infof('running on pid: %d.', $$);
     $self->load_config;
 
-    my $cv = AnyEvent->condvar;
+    my $cv     = AnyEvent->condvar;
     my $server = $self->create_server;
+    my $admin  = $self->create_admin_server($server);
 
     my @signal_guard;
     foreach my $signal (qw/INT TERM QUIT/) {
@@ -141,14 +145,16 @@ sub dispatch {
             warnf(q{graceful restart.});
             # graceful restart
             $self->reload;
-            $server->graceful_restart(
+            $server = $server->graceful_restart(
                 new_config => +{ $self->create_server_config },
             );
+            $admin->server($server);
         },
     );
 
     ## run server
     $server->run;
+    $admin->run;
 
     ## start server
     infof('server start.');
@@ -173,6 +179,22 @@ sub create_server_config {
         max_workers       => $self->config->{max_workers} || 4,
         registered_worker => $self->config->{worker}      || +{},
         interval          => $self->config->{interval}    || 1,
+    );
+}
+
+sub create_admin_server {
+    my($self, $server) = @_;
+
+    return XOClock::Admin::Server->new( $self->create_admin_server_config($server) );
+}
+
+sub create_admin_server_config {
+    my($self, $server) = @_;
+
+    return (
+        host   => $self->admin_host || '0.0.0.0',
+        port   => $self->admin_port || 5313,
+        server => $server,
     );
 }
 
@@ -240,7 +262,7 @@ This document describes XOClock version 0.01.
 
 =head1 SYNOPSIS
 
-    $ XOClock --help
+    $ xoclockd --config_file ./config.yaml --host 0.0.0.0 --port 5312
 
 =head1 DESCRIPTION
 
