@@ -333,17 +333,15 @@ sub graceful_restart {
     $self->jsonrpc(undef);
 
     warnf(q{moving a queue from old server to new server.});
-    push @{ $new->queue } => @{ $self->queue };
+    $new->queue( $self->queue );
     if ($self->{pm}) {
-        push @{ $new->pm->process_queue } => @{ $self->pm->process_queue };
-        $self->pm->process_queue([]);
+        $new->pm->process_queue ( $self->pm->process_queue  );
+        $new->pm->running_worker( $self->pm->running_worker );
+        $new->pm->process_cb    ( $self->pm->process_cb     );
+        $new->pm->wait_async    ( $self->pm->wait_async     );
+        $new->running_workers   ( $self->running_workers    );
     }
 
-    # re-sort
-    $new->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $new->queue } ]);
-
-    warnf(q{old server finalize. wait all workers.});
-    $self->wait_all_workers;
     $_[0] = $self = $new;
     warnf(q{stoped old server.});
 
@@ -352,7 +350,7 @@ sub graceful_restart {
     $self->run(
         create_jsonrpc_server => 0,
     );
-    $self->pm->dequeue if ($self->{pm} and $self->pm->process_queue);
+    $self->pm->dequeue if ($self->{pm} and $self->pm->num_queues and ($self->pm->num_workers == 0));
 
     return $self;
 }
