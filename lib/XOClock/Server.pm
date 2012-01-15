@@ -267,6 +267,12 @@ sub run_on_child {
         cb => sub {
             my($pm, $self, $arg) = @_;
 
+            # skip signal
+            local $SIG{INT}  = sub {};
+            local $SIG{TERM} = sub {};
+            local $SIG{QUIT} = sub {};
+            local $SIG{HUP}  = sub {};
+
             $arg->{code}->($self);
         },
         args => [$self, $arg],
