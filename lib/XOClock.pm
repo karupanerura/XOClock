@@ -7,6 +7,7 @@ use utf8;
 our $VERSION = '0.01';
 
 use Getopt::Long ();
+use XOClock::Config;
 use XOClock::Server;
 use XOClock::Admin::Server;
 use AnyEvent;
@@ -79,13 +80,13 @@ sub run {
 sub load_config {
     my $self = shift;
 
-    my $config = $self->config_file ? do {
-        local $YAML::Syck::ImplicitUnicode = 1;
-        infof(q{load config from '%s'.}, $self->config_file);
-        YAML::Syck::LoadFile($self->config_file);
-    } : +{};
+    unless ($self->config_file) {
+        require Carp;
+        Carp::croak 'config_file option required.';
+    }
 
-    $self->config( $config );
+    my $config = XOClock::Config->load(file => $self->config_file);
+    $self->config($config);
 }
 
 sub logging {
