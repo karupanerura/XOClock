@@ -12,6 +12,7 @@ use Log::Minimal;
 use Data::Validator 0.04;
 use Class::Load;
 use XOClock::Util ();
+use Time::HiRes;
 
 our $VERSION = '0.01';
 
@@ -228,12 +229,15 @@ sub create_pm_callback {
         on_start => sub {
             my ($pm, $pid, $self, $arg) = @_;
             infof(q{start worker name:'%s', pid:'%d'}, $arg->{name}, $pid);
-            $self->running_workers->{$arg->{name}}{$pid} = 1;
+            $self->running_workers->{$arg->{name}}{$pid} = +{
+                start_time => scalar Time::HiRes::gettimeofday
+            };
         },
         on_finish => sub {
             my ($pm, $pid, $status, $self, $arg) = @_;
-            infof(q{finish worker name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
-            delete $self->running_workers->{$arg->{name}}{$pid};
+            my $worker_info = delete $self->running_workers->{$arg->{name}}{$pid};
+            my $diff = Time::HiRes::gettimeofday - $worker_info->{start_time};
+            infof(q{finish worker name:'%s', pid:'%d', status:'%d' running:%f[sec]}, $arg->{name}, $pid, $status, $diff);
 
             unless ($status == 0) {
                 warnf(q{job failed. name:'%s', pid:'%d', status:'%d'}, $arg->{name}, $pid, $status);
