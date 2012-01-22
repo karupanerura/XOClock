@@ -201,6 +201,8 @@ This document describes XOClock::Config version 0.01.
 
     use XOClock::Config;
 
+    my $config = XOClock::Config->load(file => "xoclock.yaml");
+
 =head1 DESCRIPTION
 
 # TODO

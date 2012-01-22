@@ -6,6 +6,8 @@ use utf8;
 
 our $VERSION = '0.01';
 
+sub run { require Carp; Carp::croak 'this is abstruct method.'; }
+
 1;
 __END__
 
@@ -19,7 +21,20 @@ This document describes XOClock::Worker version 0.01.
 
 =head1 SYNOPSIS
 
-    use XOClock::Worker;
+    package YourApp::Worker::XOClock::FooWork;
+    use strict;
+    use warnings;
+    use utf8;
+
+    use parent qw/XOClock::Worker/;
+
+    sub run {
+        my($class, $args) = @_;
+
+        # work!
+    }
+
+    1;
 
 =head1 DESCRIPTION
 

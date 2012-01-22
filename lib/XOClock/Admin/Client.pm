@@ -59,15 +59,22 @@ __END__
 
 =head1 NAME
 
-XOClock::Client - Perl extention to do something
+XOClock::Admin::Client - Perl extention to do something
 
 =head1 VERSION
 
-This document describes XOClock::Client version 0.01.
+This document describes XOClock::Admin::Client version 0.01.
 
 =head1 SYNOPSIS
 
-    use XOClock::Client;
+    use XOClock::Admin::Client;
+
+    my $client = XOClock::Admin::Client->new(
+        host => '127.0.0.1',
+        port => 5313,
+    );
+    my $res = $client->num_workers->recv;
+    warn "num_workers: $res";
 
 =head1 DESCRIPTION
 

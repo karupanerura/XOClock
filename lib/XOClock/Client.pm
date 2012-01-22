@@ -64,6 +64,16 @@ This document describes XOClock::Client version 0.01.
 
     use XOClock::Client;
 
+    my $client = XOClock::Client->new(host => '127.0.0.1', port => 5312);
+
+    my $res = $client->enqueue(
+        name      => $worker,
+        datetime  => '2012-11-30 00:00:10',
+        time_zone => 'JST',
+        args      => +{},
+    )->recv;
+    warn "Response: $res"; ## 'ok' or 'ng'
+
 =head1 DESCRIPTION
 
 # TODO
