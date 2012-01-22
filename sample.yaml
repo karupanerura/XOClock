@@ -3,4 +3,5 @@ worker:
   Sleep1: t::TestUtil::Worker::Sleep1
   Sleep2: t::TestUtil::Worker::Sleep2
   Sleep3: t::TestUtil::Worker::Sleep3
-  Failed: t::TestUtil::Worker::Failed
+config_file:
+  - "sample2.yaml"
