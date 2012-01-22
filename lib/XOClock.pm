@@ -144,12 +144,13 @@ sub dispatch {
         cb     => sub {
             critf(q{signal '%s' trapped.}, 'HUP');
             warnf(q{graceful restart.});
-            # graceful restart
-            $self->reload;
-            $server = $server->graceful_restart(
-                new_config => +{ $self->create_server_config },
-            );
-            $admin->server($server);
+            if ($self->reload) {
+                # graceful restart
+                $server = $server->graceful_restart(
+                    new_config => +{ $self->create_server_config },
+                );
+                $admin->server($server);
+            }
         },
     );
 
@@ -202,7 +203,23 @@ sub create_admin_server_config {
 sub reload {
     my $self = shift;
     infof(q{reload config.});
-    $self->load_config;
+
+    my $backup = $self->config;
+
+    local $@;
+    eval {
+        $self->load_config;
+    };
+    if ($@) {
+        warnf(q{reload config failed. rollbacked. Error: '%s'.}, $@);
+        $self->config($backup);
+
+        # failed
+        return;
+    }
+
+    # success
+    return 1;
 }
 
 sub do_help {
