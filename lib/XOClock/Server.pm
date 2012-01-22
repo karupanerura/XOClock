@@ -146,7 +146,7 @@ sub _enqueue {
     else {
         warnf(
             q{Cannot enqueue. already past '%s'. (Worker:'%s', time_zone '%s')},
-            $arg->{datetime}, $arg->{name},
+            $arg->{datetime}, $arg->{worker}{name},
             exists($arg->{time_zone}) ? $arg->{time_zone} : 'GMT'
         );
 
