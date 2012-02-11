@@ -13,28 +13,30 @@ use Data::Validator 0.04;
 use Class::Load;
 use XOClock::Util ();
 use Time::HiRes;
+use XOClock::MouseType qw/local_type/;
 
 our $VERSION = '0.01';
 
 use Class::Accessor::Lite 0.04 (
     ro  => [
         qw/host port/,
-        qw/max_workers registered_worker interval/,# from config
+        qw/max_workers registered_worker registered_command interval/,# from config
     ],
     rw  => [
         qw/jsonrpc checker/,
-        qw/queue worker/,
+        qw/queue worker command/,
         qw/running_workers/,
     ],
 );
 
 sub new {
     state $rule = Data::Validator->new(
-        host              => +{ isa => 'Str' },
-        port              => +{ isa => 'Int' },
-        max_workers       => +{ isa => 'Int' },
-        registered_worker => +{ isa => 'HashRef[Str]' },
-        interval          => +{ isa => 'Int' },
+        host               => +{ isa => 'Str' },
+        port               => +{ isa => 'Int' },
+        max_workers        => +{ isa => 'Int' },
+        registered_worker  => +{ isa => 'HashRef[Str]' },
+        registered_command => +{ isa => 'HashRef[Str]' },
+        interval           => +{ isa => 'Int' },
     )->with(qw/Method/);
     my($class, $arg) = $rule->validate(@_);
 
@@ -45,6 +47,7 @@ sub init {
     my $self = shift;
 
     $self->worker(+{});
+    $self->command(+{});
     $self->queue([]);
     $self->running_workers(+{});
 
@@ -85,6 +88,7 @@ sub run {
 
 sub enqueue {
     state $rule = Data::Validator->new(
+        type      => +{ isa => local_type('WorkerType') },
         name      => +{ isa => 'Str' },
         datetime  => +{ isa => 'Str' },
         time_zone => +{ isa => 'Str', optional => 1 },
@@ -102,7 +106,31 @@ sub enqueue {
         # enqueue failed
         return;
     }
-    elsif ( my $worker = $self->get_worker($arg->{name}) ) {
+    else {
+        my $worker_arg = +{ %$arg };
+        delete $worker_arg->{type};
+
+        given ($arg->{type}) {
+            when ('worker') {
+                return $self->enqueue_worker($worker_arg);
+            }
+            when ('command') {
+                return $self->enqueue_command($worker_arg);
+            }
+        }
+    }
+}
+
+sub enqueue_worker {
+    state $rule = Data::Validator->new(
+        name      => +{ isa => 'Str' },
+        datetime  => +{ isa => 'Str' },
+        time_zone => +{ isa => 'Str', optional => 1 },
+        args      => +{ isa => 'HashRef' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    if ( my $worker = $self->get_worker($arg->{name}) ) {
         return $self->_enqueue(
             worker   => $worker,
             datetime => $arg->{datetime},
@@ -112,6 +140,31 @@ sub enqueue {
     }
     else {
         warnf(q{Worker '%s' is not registered.}, $arg->{name});
+
+        # enqueue failed
+        return;
+    }
+}
+
+sub enqueue_command {
+    state $rule = Data::Validator->new(
+        name      => +{ isa => 'Str' },
+        datetime  => +{ isa => 'Str' },
+        time_zone => +{ isa => 'Str', optional => 1 },
+        args      => +{ isa => 'HashRef' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    if ( my $worker = $self->get_command($arg->{name}) ) {
+        return $self->_enqueue(
+            worker   => $worker,
+            datetime => $arg->{datetime},
+            exists($arg->{time_zone}) ? (time_zone => $arg->{time_zone}) : (),
+            args     => $arg->{args},
+        );
+    }
+    else {
+        warnf(q{Command '%s' is not registered.}, $arg->{name});
 
         # enqueue failed
         return;
@@ -184,20 +237,37 @@ sub start_worker {
     )->with(qw/Method/);
     my($self, $work) = $rule->validate(@_);
 
-    $self->run_on_child(
-        name  => $work->{worker}{name},
-        code  => sub {
-            my $class = $work->{worker}{class};
-            if ( Class::Load::try_load_class($class) ) {
-                infof(q{Worker load success. class: %s, name: %s}, $class, $work->{worker}{name});
-                $class->run($work->{args});
-            }
-            else {
-                critf(q{Worker load failed. class: %s, name: %s}, $class, $work->{worker}{name});
-                return;
-            }
-        },
-    );
+        use Data::Dumper; warn Dumper $work;
+    if ($work->{worker}{type} eq 'worker') {
+        $self->run_on_child(
+            name  => $work->{worker}{name},
+            code  => sub {
+                my $class = $work->{worker}{class};
+                if ( Class::Load::try_load_class($class) ) {
+                    infof(q{Worker load success. class: %s, name: %s}, $class, $work->{worker}{name});
+                    $class->run($work->{args});
+                }
+                else {
+                    critf(q{Worker load failed. class: %s, name: %s}, $class, $work->{worker}{name});
+                    return;
+                }
+            },
+        );
+    }
+    elsif ($work->{worker}{type} eq 'command') {
+        $self->run_on_child(
+            name  => $work->{worker}{name},
+            code  => sub {
+                my $command = $work->{worker}{command};
+                my @args    = @{ $work->{args}{args} };
+
+                system($command, @args);
+            },
+        );
+    }
+    else {
+        die 'unknown case';
+    }
 }
 
 sub get_worker {
@@ -207,9 +277,23 @@ sub get_worker {
     my($self, $arg) = $rule->validate(@_);
 
     $self->worker->{$arg->{name}} ||= +{
+        type  => 'worker',
         class => $self->registered_worker->{$arg->{name}},
         name  => $arg->{name},
     } if exists($self->registered_worker->{$arg->{name}});
+}
+
+sub get_command {
+    state $rule = Data::Validator->new(
+        name => +{ isa => 'Str' },
+    )->with(qw/Method Sequenced/);
+    my($self, $arg) = $rule->validate(@_);
+
+    return $self->command->{$arg->{name}} ||= +{
+        type    => 'command',
+        command => $self->registered_command->{$arg->{name}},
+        name    => $arg->{name},
+    } if exists $self->registered_command->{$arg->{name}};
 }
 
 sub pm {

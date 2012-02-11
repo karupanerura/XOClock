@@ -28,6 +28,9 @@ sub test_server_config {
             'Sleep3' => 't::TestUtil::Worker::Sleep3',
             'Mock'   => 't::TestUtil::Worker::Mock',
         },
+        registered_command => +{
+            # TODO
+        },
     );
 }
 

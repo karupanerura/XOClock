@@ -8,6 +8,7 @@ our $VERSION = '0.01';
 
 use AnyEvent::JSONRPC::Lite::Client;
 use Data::Validator;
+use XOClock::MouseType qw/local_type/;
 
 use Class::Accessor::Lite (
     ro => [qw/host port/],
@@ -43,10 +44,31 @@ sub enqueue {
         datetime  => +{ isa => 'Str' },
         time_zone => +{ isa => 'Str', optional => 1 },
         args      => +{ isa => 'HashRef' },
+        type      => +{ isa => local_type('WorkerType'), default => 'worker' },
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
     $self->jsonrpc->call(enqueue => $arg);
+}
+
+sub enqueue_command {
+    state $rule = Data::Validator->new(
+        name      => +{ isa => 'Str' },
+        datetime  => +{ isa => 'Str' },
+        time_zone => +{ isa => 'Str', optional => 1 },
+        args      => +{ isa => 'ArrayRef[Str]' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    $self->enqueue(
+        name      => $arg->{name},
+        datetime  => $arg->{datetime},
+        exists($arg->{time_zone}) ? (
+            time_zone => $arg->{time_zone}
+        ) : (),
+        args      => +{ args => $arg->{args} },
+        type      => 'command',
+    );
 }
 
 1;

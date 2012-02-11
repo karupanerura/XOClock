@@ -8,7 +8,7 @@ our $VERSION = '0.01';
 
 use Class::Accessor::Lite (
     ro  => [qw/max_workers/],
-    rw  => [qw/worker marged_config/],
+    rw  => [qw/worker command marged_config/],
 );
 use Data::Validator;
 use YAML::Syck ();
@@ -93,6 +93,9 @@ sub merge {
             when ('worker') {
                 $self->merge_worker($config->{worker});
             }
+            when ('command') {
+                $self->merge_command($config->{command});
+            }
             when ('config_file') {
                 $self->load_child_config(@{ $config->{config_file} });
             }
@@ -118,6 +121,24 @@ sub merge_worker {
         +{
             %{ $self->worker },
             %$worker,
+        }
+    );
+}
+
+sub merge_command {
+    my($self, $command) = @_;
+
+    foreach my $name (keys %$command) {
+        if ( exists $self->command->{$name} ) {
+            require Carp;
+            Carp::croak "duplicate command: $name";
+        }
+    }
+
+    $self->command(
+        +{
+            %{ $self->command },
+            %$command,
         }
     );
 }
@@ -164,9 +185,10 @@ sub config_validate {
 
 sub common_rule {
     return (
-     worker      => +{ isa => 'HashRef[Str]' },
-     config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
-    )
+        worker      => +{ isa => 'HashRef[Str]', default => sub { +{} } },
+        command     => +{ isa => 'HashRef[Str]', default => sub { +{} } },
+        config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
+    );
 }
 
 sub config_rule {
