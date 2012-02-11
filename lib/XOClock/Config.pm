@@ -164,8 +164,8 @@ sub config_validate {
 
 sub common_rule {
     return (
-     worker      => +{ isa => 'HashRef[Str]' },
-     config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
+        worker      => +{ isa => 'HashRef[Str]',  default => sub { +{} } },
+        config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
     )
 }
 
@@ -173,7 +173,10 @@ sub config_rule {
     my $class = shift;
 
     return (
-        max_workers => +{ isa => 'Int' },
+        max_workers => +{ isa => 'Int',     default => 4, },
+        interval    => +{ isa => 'Int',     default => 1, },
+        storage     => +{ isa => 'Str',     default => 'XOClock::Storage::Memory' },
+        storage_opt => +{ isa => 'HashRef', default => sub { +{} } },
         $class->common_rule,
     );
 }

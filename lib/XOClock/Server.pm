@@ -19,7 +19,7 @@ our $VERSION = '0.01';
 use Class::Accessor::Lite 0.04 (
     ro  => [
         qw/host port/,
-        qw/max_workers registered_worker interval/,# from config
+        qw/max_workers registered_worker storage storage_option interval/,# from config
     ],
     rw  => [
         qw/jsonrpc checker/,
@@ -34,6 +34,8 @@ sub new {
         port              => +{ isa => 'Int' },
         max_workers       => +{ isa => 'Int' },
         registered_worker => +{ isa => 'HashRef[Str]' },
+        storage           => +{ isa => 'Str', },
+        storage_option    => +{ isa => 'HashRef' },
         interval          => +{ isa => 'Int' },
     )->with(qw/Method/);
     my($class, $arg) = $rule->validate(@_);
@@ -45,7 +47,7 @@ sub init {
     my $self = shift;
 
     $self->worker(+{});
-    $self->queue([]);
+    $self->queue( $self->create_queue );
     $self->running_workers(+{});
 
     return $self;
@@ -133,12 +135,11 @@ sub _enqueue {
         exists($arg->{time_zone}) ? (time_zone => $arg->{time_zone}) : ()
     );
     if ($tp->epoch >= time) {
-        push @{ $self->queue } => +{
+        $self->queue->push(
             worker => $arg->{worker},
             args   => $arg->{args},
             epoch  => $tp->epoch,
-        };
-        $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
+        );
 
         # enqueue success
         return 1;
@@ -162,15 +163,9 @@ sub dequeue {
     my($self, $arg) = $rule->validate(@_);
 
     my $count = 0;
-    if (@{ $self->queue } and ($arg->{time} >= $self->queue->[0]{epoch})) {
-        while (my $work = shift @{ $self->queue }) {
-            if ($arg->{time} < $work->{epoch}) {
-                unshift @{ $self->queue } => $work;
-                last;
-            }
-            $self->start_worker($work);
-            $count++;
-        }
+    while (my $work = $self->queue->shift($arg)) {
+        $self->start_worker($work);
+        $count++;
     }
 
     return $count;
@@ -283,6 +278,14 @@ sub run_on_child {
     );
 }
 
+sub create_queue {
+    my $self = shift;
+
+    infof('create storage class:"%s"', $self->storage);
+    Class::Load::load_class( $self->storage );
+    $self->storage->new($self->storage_option);
+}
+
 sub create_jsonrpc_server {
     state $rule = Data::Validator->new(
         host     => +{ isa => 'Str' },
@@ -343,7 +346,7 @@ sub graceful_restart {
     $self->jsonrpc(undef);
 
     warnf(q{moving a queue from old server to new server.});
-    $new->queue( $self->queue );
+    $self->queue->copy(to => $new->queue);
     if ($self->{pm}) {
         $new->pm->process_queue ( $self->pm->process_queue  );
         $new->pm->running_worker( $self->pm->running_worker );

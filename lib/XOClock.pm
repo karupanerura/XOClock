@@ -178,9 +178,11 @@ sub create_server_config {
     return (
         host              => $self->host                  || '0.0.0.0',
         port              => $self->port                  || 5312,
-        max_workers       => $self->config->{max_workers} || 4,
-        registered_worker => $self->config->{worker}      || +{},
-        interval          => $self->config->{interval}    || 1,
+        max_workers       => $self->config->{max_workers},
+        registered_worker => $self->config->{worker},
+        interval          => $self->config->{interval},
+        storage           => $self->config->{storage},
+        storage_option    => $self->config->{storage_opt},
     );
 }
 
