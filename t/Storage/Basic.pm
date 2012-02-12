@@ -6,6 +6,7 @@ use utf8;
 use Test::More;
 use List::Util qw/shuffle/;
 
+use t::TestUtil qw/create_dummy_work run_flatten/;
 use XOClock::Storage::Memory;
 
 sub run_test {
@@ -21,7 +22,7 @@ sub run_test {
         my $next = shift;
         my $called = 0;
         $q->push(
-            %{ create_dummy_data(0) },
+            %{ create_dummy_work(0) },
             cb => sub {
                 pass 'call ok';
                 size_is_valid($q => 1, $next);
@@ -35,7 +36,7 @@ sub run_test {
         my $next = shift;
         my $called = 0;
         $q->push_multi(
-            works => [map { create_dummy_data($_) } shuffle(1 .. 99)],
+            works => [map { create_dummy_work($_) } shuffle(1 .. 99)],
             cb => sub {
                 pass 'call ok';
                 size_is_valid($q => 100, $next);
@@ -133,25 +134,6 @@ sub size_is_valid {
             fail 'duplicate called.' if $called++;
         }
     );
-}
-
-sub create_dummy_data {
-    my $epoch = shift;
-
-    +{
-        worker => +{},
-        args   => +{},
-        epoch  => $epoch,
-    }
-}
-
-sub run_flatten {
-    my $code = pop;
-    while (my $next = pop) {
-        my $cb = $code;
-        $code = sub { $next->($cb) };
-    }
-    $code->();
 }
 
 1;

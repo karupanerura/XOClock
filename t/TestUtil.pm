@@ -4,7 +4,7 @@ use warnings;
 use utf8;
 
 use parent qw/Exporter/;
-our @EXPORT_OK = qw/test_server_config ignore_logminimal/;
+our @EXPORT_OK = qw/test_server_config ignore_logminimal create_dummy_work run_flatten/;
 use Log::Minimal ();
 
 sub ignore_logminimal (&) {## no critic
@@ -31,6 +31,25 @@ sub test_server_config {
         storage        => 'XOClock::Storage::Memory',
         storage_option => +{},
     );
+}
+
+sub create_dummy_work {
+    my $epoch = shift;
+
+    +{
+        worker => +{},
+        args   => +{},
+        epoch  => $epoch,
+    }
+}
+
+sub run_flatten {
+    my $code = pop;
+    while (my $next = pop) {
+        my $cb = $code;
+        $code = sub { $next->($cb) };
+    }
+    $code->();
 }
 
 1;
