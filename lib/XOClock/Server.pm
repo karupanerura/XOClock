@@ -162,10 +162,10 @@ sub dequeue {
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
-    my $count = 0;
-    while (my $work = $self->queue->shift($arg)) {
+    my $works = $self->queue->shift_multi($arg);
+    my $count = scalar @$works;
+    foreach my $work (@$works) {
         $self->start_worker($work);
-        $count++;
     }
 
     return $count;

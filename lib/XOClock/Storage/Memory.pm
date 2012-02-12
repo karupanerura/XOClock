@@ -3,15 +3,18 @@ use strict;
 use warnings;
 use utf8;
 
+use parent qw/XOClock::Storage/;
+
 use 5.10.0;
 use Data::Validator;
+use sort '_mergesort';
 
 use Class::Accessor::Lite (
     rw  => [qw/queue/],
 );
 
 sub new {
-    my $class = shift;
+    my $class = CORE::shift;
 
     bless +{
         queue => []
@@ -19,20 +22,25 @@ sub new {
 }
 
 sub push {
-    state $rule = Data::Validator->new(
-        worker => 'HashRef',
-        args   => 'HashRef',
-        epoch  => 'Int',
-    )->with(qw/Method/);
-    my($self, $arg) = $rule->validate(@_);
+    my $self = CORE::shift;
+    my $arg  = $self->work_validate(@_);
 
     my $pos = $self->get_insert_pos(epoch => $arg->{epoch});
     splice(@{ $self->queue }, $pos, 0, $arg);
 }
 
+sub push_multi {
+    my $self = CORE::shift;
+
+    foreach my $work (@_) {
+        CORE::push @{ $self->queue } => $self->work_validate($work);
+    }
+    $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
+}
+
 sub get_insert_pos {
     state $rule = Data::Validator->new(
-        epoch  => 'Int',
+        epoch  => +{ isa => 'Int' },
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
@@ -72,18 +80,37 @@ sub shift {
     }
 }
 
-sub copy {
+sub shift_multi {
     state $rule = Data::Validator->new(
-        to => +{ isa => __PACKAGE__ },
+        time => +{ isa => 'Int', default => sub { time } },
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
-    return unless @{ $self->queue };
-
-    my $last_epoch = $self->queue->[-1]{epoch};
-    while (my $work = $self->shift(time => $last_epoch)) {
-        $arg->{to}->push($work)
+    my @works;
+    while (@{ $self->queue } and ($arg->{time} >= $self->queue->[0]{epoch})) {
+        CORE::push @works => CORE::shift @{ $self->queue };
     }
+
+    return \@works;
+}
+
+sub shift_all {
+    my $self = CORE::shift;
+
+    my @works = @{ $self->queue };
+    $self->queue([]);
+
+    return \@works;
+}
+
+sub copy {
+    state $rule = Data::Validator->new(
+        to => +{ isa => 'XOClock::Storage' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    my @works = @{ $self->shift_all };
+    $arg->{to}->push_multi(@works);
 }
 
 1;
