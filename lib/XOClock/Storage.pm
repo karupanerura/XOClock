@@ -12,7 +12,16 @@ sub push_multi  { require Carp; Carp::croak 'this is abstruct method' }
 sub shift       { require Carp; Carp::croak 'this is abstruct method' }
 sub shift_multi { require Carp; Carp::croak 'this is abstruct method' }
 sub shift_all   { require Carp; Carp::croak 'this is abstruct method' }
-sub copy        { require Carp; Carp::croak 'this is abstruct method' }
+
+sub copy {
+    state $rule = Data::Validator->new(
+        to => +{ isa => 'XOClock::Storage' },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    my @works = @{ $self->shift_all };
+    $arg->{to}->push_multi(@works);
+}
 
 sub work_validate {
     state $rule = Data::Validator->new(
