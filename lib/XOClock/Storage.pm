@@ -16,11 +16,18 @@ sub shift_all   { require Carp; Carp::croak 'this is abstruct method' }
 sub copy {
     state $rule = Data::Validator->new(
         to => +{ isa => 'XOClock::Storage' },
+        cb => +{ isa => 'CodeRef' },
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
-    my @works = @{ $self->shift_all };
-    $arg->{to}->push_multi(@works);
+    $self->shift_all(
+        cb => sub {
+            $arg->{to}->push_multi(
+                works => CORE::shift,
+                cb    => $arg->{cb}
+            );
+        }
+    );
 }
 
 sub work_validate {
@@ -28,6 +35,7 @@ sub work_validate {
         worker => +{ isa => 'HashRef' },
         args   => +{ isa => 'HashRef' },
         epoch  => +{ isa => 'Int'     },
+        cb     => +{ isa => 'CodeRef', optional => 1 },
     );
     CORE::shift; ## trush
     $rule->validate(@_);

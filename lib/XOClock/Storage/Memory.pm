@@ -27,15 +27,21 @@ sub push {
 
     my $pos = $self->get_insert_pos(epoch => $arg->{epoch});
     splice(@{ $self->queue }, $pos, 0, $arg);
+    $arg->{cb}->(status => 'success') if exists $arg->{cb};
 }
 
 sub push_multi {
-    my $self = CORE::shift;
+    state $rule = Data::Validator->new(
+        works => +{ isa => 'ArrayRef' },
+        cb    => +{ isa => 'CodeRef', optional => 1 },
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
 
-    foreach my $work (@_) {
+    foreach my $work (@{ $arg->{works} }) {
         CORE::push @{ $self->queue } => $self->work_validate($work);
     }
     $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
+    $arg->{cb}->(status => 'success') if exists $arg->{cb};
 }
 
 sub get_insert_pos {
@@ -72,17 +78,19 @@ sub get_insert_pos {
 sub shift {
     state $rule = Data::Validator->new(
         time => +{ isa => 'Int', default => sub { time } },
+        cb   => +{ isa => 'CodeRef' },
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
     if (@{ $self->queue } and ($arg->{time} >= $self->queue->[0]{epoch})) {
-        return CORE::shift @{ $self->queue };
+        $arg->{cb}->(CORE::shift @{ $self->queue });
     }
 }
 
 sub shift_multi {
     state $rule = Data::Validator->new(
         time => +{ isa => 'Int', default => sub { time } },
+        cb   => +{ isa => 'CodeRef' }
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
@@ -91,26 +99,19 @@ sub shift_multi {
         CORE::push @works => CORE::shift @{ $self->queue };
     }
 
-    return \@works;
+    $arg->{cb}->(\@works);
 }
 
 sub shift_all {
-    my $self = CORE::shift;
+    state $rule = Data::Validator->new(
+        cb   => +{ isa => 'CodeRef' }
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
 
     my @works = @{ $self->queue };
     $self->queue([]);
 
-    return \@works;
-}
-
-sub copy {
-    state $rule = Data::Validator->new(
-        to => +{ isa => 'XOClock::Storage' },
-    )->with(qw/Method/);
-    my($self, $arg) = $rule->validate(@_);
-
-    my @works = @{ $self->shift_all };
-    $arg->{to}->push_multi(@works);
+    $arg->{cb}->(\@works);
 }
 
 1;

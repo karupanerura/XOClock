@@ -74,10 +74,7 @@ sub run {
         $self->checker(
             AnyEvent->timer(
                 interval => $self->interval,
-                cb       => sub {
-                    my $started_job_count = $self->dequeue;
-                    infof('job started %d process.', $started_job_count) if $started_job_count;
-                }
+                cb       => sub { $self->dequeue }
             )
         );
     }
@@ -162,13 +159,18 @@ sub dequeue {
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
-    my $works = $self->queue->shift_multi($arg);
-    my $count = scalar @$works;
-    foreach my $work (@$works) {
-        $self->start_worker($work);
-    }
-
-    return $count;
+    weaken($self);
+    $self->queue->shift_multi(
+        time => $arg->{time},
+        cb => sub {
+            my $works = shift;
+            my $count = scalar @$works;
+            foreach my $work (@$works) {
+                $self->start_worker($work);
+            }
+            infof('job started %d process.', $count) if $count;
+        }
+    );
 }
 
 sub start_worker {
@@ -335,6 +337,7 @@ sub graceful_restart {
     warnf(q{graceful restart.});
 
     my $new = $class->new(%{ $arg->{new_config} });
+    $_[0] = $new;
 
     # stop
     warnf(q{stop old server.});
@@ -346,7 +349,6 @@ sub graceful_restart {
     $self->jsonrpc(undef);
 
     warnf(q{moving a queue from old server to new server.});
-    $self->queue->copy(to => $new->queue);
     if ($self->{pm}) {
         $new->pm->process_queue ( $self->pm->process_queue  );
         $new->pm->running_worker( $self->pm->running_worker );
@@ -355,17 +357,23 @@ sub graceful_restart {
         $new->running_workers   ( $self->running_workers    );
     }
 
-    $_[0] = $self = $new;
-    warnf(q{stoped old server.});
+    weaken($new);
+    $self->queue->copy(
+        to => $new->queue,
+        cb => sub {
+            undef $self;
+            warnf(q{stoped old server.});
 
-    # start
-    warnf(q{start new server.});
-    $self->run(
-        create_jsonrpc_server => 0,
+            # start
+            warnf(q{start new server.});
+            $new->run(
+                create_jsonrpc_server => 0,
+            );
+            $new->pm->dequeue if ($new->{pm} and $new->pm->num_queues and ($new->pm->num_workers == 0));
+        }
     );
-    $self->pm->dequeue if ($self->{pm} and $self->pm->num_queues and ($self->pm->num_workers == 0));
 
-    return $self;
+    return $new;
 }
 
 sub finalize {
