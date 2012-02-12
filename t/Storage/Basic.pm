@@ -113,10 +113,8 @@ sub run_test {
 
     ## on_finish
     push @test => sub {
-        my $next = shift;
         $cb->() if $cb;
         done_testing;
-        $next->();
     };
 
     run_flatten(@test);
@@ -148,8 +146,7 @@ sub create_dummy_data {
 }
 
 sub run_flatten {
-    my $last = pop;
-    my $code = sub { $last->(sub{}) };
+    my $code = pop;
     while (my $next = pop) {
         my $cb = $code;
         $code = sub { $next->($cb) };
