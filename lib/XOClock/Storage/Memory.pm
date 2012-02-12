@@ -114,4 +114,24 @@ sub shift_all {
     $arg->{cb}->(\@works);
 }
 
+sub dump {
+    state $rule = Data::Validator->new(
+        cb   => +{ isa => 'CodeRef' }
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    my @works = @{ $self->queue };
+    $arg->{cb}->(\@works);
+}
+
+sub size {
+    state $rule = Data::Validator->new(
+        cb   => +{ isa => 'CodeRef' }
+    )->with(qw/Method/);
+    my($self, $arg) = $rule->validate(@_);
+
+    my $size = scalar @{ $self->queue };
+    $arg->{cb}->($size);
+}
+
 1;

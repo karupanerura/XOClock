@@ -12,6 +12,8 @@ sub push_multi  { require Carp; Carp::croak 'this is abstruct method' }
 sub shift       { require Carp; Carp::croak 'this is abstruct method' }
 sub shift_multi { require Carp; Carp::croak 'this is abstruct method' }
 sub shift_all   { require Carp; Carp::croak 'this is abstruct method' }
+sub dump        { require Carp; Carp::croak 'this is abstruct method' }
+sub size        { require Carp; Carp::croak 'this is abstruct method' }
 
 sub copy {
     state $rule = Data::Validator->new(
