@@ -4,6 +4,7 @@ use warnings;
 use utf8;
 
 use Test::More;
+use List::Util qw/shuffle/;
 
 use XOClock::Storage::Memory;
 
@@ -34,7 +35,7 @@ sub run_test {
         my $next = shift;
         my $called = 0;
         $q->push_multi(
-            works => [map { create_dummy_data($_) } 1 .. 99],
+            works => [map { create_dummy_data($_) } shuffle(1 .. 99)],
             cb => sub {
                 pass 'call ok';
                 size_is_valid($q => 100, $next);
