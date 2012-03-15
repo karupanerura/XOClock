@@ -13,6 +13,7 @@ use Class::Accessor::Lite (
 use Data::Validator;
 use YAML::Syck ();
 use Log::Minimal;
+use File::Zglob ();
 
 sub load {
     state $rule = Data::Validator->new(
@@ -74,9 +75,9 @@ sub init {
 }
 
 sub load_child_config {
-    my($self, @files) = @_;
+    my $self = shift;
 
-    foreach my $file (@files) {
+    foreach my $file (map { File::Zglob::zglob($_) } @_) {
         unless (exists $self->marged_config->{$file}) {
             my $config = $self->_load(file => $file, type => 'child');
             $self->marged_config->{$file} = $config;

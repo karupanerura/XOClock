@@ -32,6 +32,7 @@ requires 'Time::Piece' => '1.20';
 requires 'Time::HiRes';
 requires 'AnyEvent::ForkManager';
 requires 'Log::Minimal';
+requires 'File::Zglob';
 requires 'AnyEvent';
 requires 'AnyEvent::JSONRPC::Lite';
 requires 'Scalar::Util';
