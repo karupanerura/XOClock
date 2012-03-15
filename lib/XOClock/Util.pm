@@ -6,25 +6,42 @@ use utf8;
 use 5.10.0;
 
 use parent qw/Exporter/;
-our @EXPORT_OK = qw/strptime/;
+our @EXPORT_OK = qw/parse_datetime/;
 
 use Data::Validator 0.04;
-use Time::Piece 1.20;
+use Time::Local;
+use Log::Minimal;
 
-sub strptime {
+sub parse_datetime {
     state $rule = Data::Validator->new(
         str       => +{ isa => 'Str' },
-        time_zone => +{ isa => 'Str', optional => 1 },
-        format    => +{ isa => 'Str' },
+        time_zone => +{ isa => 'Str', default => 'GMT' },
     );
     my $arg = $rule->validate(@_);
 
-    local $ENV{TZ} = exists($arg->{time_zone}) ? $arg->{time_zone} : undef;
+    if ($arg->{str} =~ /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/) {
+        my $e;
+        my $epoch = do {
+            local $@;
+            my $epoch = eval {
+                local $ENV{TZ} = $arg->{time_zone};
+                Time::Local::timelocal($6, $5, $4, $3, $2 - 1, $1 - 1900);
+            };
+            $e = $@ if $@;
+            $epoch;
+        };
+        if ($e) {
+            warnf(q{cannnot parse string. error = '%s'}, $e);
+            return;
+        }
 
-    my $proto = Time::Piece->strptime($arg->{str}, $arg->{format});
-    $proto = Time::Piece->localtime( $proto ) if $ENV{TZ};
-
-    return $proto;
+        return $epoch;
+    }
+    else {
+        warnf('required format like "XXXX-XX-XX XX:XX:XX" text.');
+        return;
+    }
 }
+
 
 1;

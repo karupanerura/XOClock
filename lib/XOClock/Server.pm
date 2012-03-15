@@ -127,16 +127,22 @@ sub _enqueue {
     )->with(qw/Method/);
     my($self, $arg) = $rule->validate(@_);
 
-    my $tp = XOClock::Util::strptime(
+    my $epoch = XOClock::Util::parse_datetime(
         str    => $arg->{datetime},
-        format => '%Y-%m-%d %H:%M:%S',
-        exists($arg->{time_zone}) ? (time_zone => $arg->{time_zone}) : ()
+        exists($arg->{time_zone}) ? (
+            time_zone => $arg->{time_zone}
+        ) : ()
     );
-    if ($tp->epoch >= time) {
+
+    if (not(defined $epoch)) {
+        warnf('datetime parse failed. time_zone="%s", datetime="%s"', $arg->{time_zone}, $arg->{datetime});
+        return 0;
+    }
+    elsif ($epoch >= time) {
         push @{ $self->queue } => +{
             worker => $arg->{worker},
             args   => $arg->{args},
-            epoch  => $tp->epoch,
+            epoch  => $epoch,
         };
         $self->queue([ sort { $a->{epoch} <=> $b->{epoch} } @{ $self->queue } ]);
 

@@ -28,7 +28,7 @@ all_from 'lib/XOClock.pm';
 
 requires 'Getopt::Long' => '2.37';
 requires 'Class::Accessor::Lite' => '0.04';
-requires 'Time::Piece' => '1.20';
+requires 'Time::Local';
 requires 'Time::HiRes';
 requires 'AnyEvent::ForkManager';
 requires 'Log::Minimal';
@@ -45,7 +45,6 @@ requires 'parent';
 
 test_requires 'Test::More'       => '0.88';
 test_requires 'Test::Requires'   => '0.06';
-test_requires 'Time::Piece'      => '1.20';
 test_requires 'Test::SharedFork';
 test_requires 'Test::TCP';
 test_requires 'Log::Minimal';
