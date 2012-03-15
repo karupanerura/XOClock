@@ -3,6 +3,8 @@ use strict;
 use warnings;
 use utf8;
 
+use Test::Requires qw/AnyEvent::DBI DBD::SQLite/;
+
 use AnyEvent;
 use XOClock::Storage::DBI;
 use t::Storage::Basic;
