@@ -7,7 +7,6 @@ use Test::More;
 use List::Util qw/shuffle/;
 
 use t::TestUtil qw/create_dummy_work run_flatten/;
-use XOClock::Storage::Memory;
 
 sub run_test {
     my $class = shift;
