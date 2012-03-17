@@ -165,7 +165,7 @@ sub config_validate {
 
 sub common_rule {
     return (
-     worker      => +{ isa => 'HashRef[Str]' },
+     worker      => +{ isa => 'HashRef[Str]',  xor => [qw/config_file/] },
      config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
     )
 }
