@@ -66,6 +66,7 @@ sub init {
     my $self = shift;
     state $child_rule = Data::Validator->new($self->child_config_rule);
 
+    $self->worker(+{}) unless $self->worker;
     $self->marged_config(+{});
     if (exists $self->{config_file}) {
         $self->load_child_config(@{ delete $self->{config_file} });
