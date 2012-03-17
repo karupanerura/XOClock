@@ -14,6 +14,7 @@ use Data::Validator;
 use YAML::Syck ();
 use Log::Minimal;
 use File::Zglob ();
+use lib ();
 
 sub load {
     state $rule = Data::Validator->new(
@@ -71,6 +72,9 @@ sub init {
     if (exists $self->{config_file}) {
         $self->load_child_config(@{ delete $self->{config_file} });
     }
+    if (exists $self->{lib}) {
+        lib->import(@{ delete $self->{lib} });
+    }
 
     return $self;
 }
@@ -97,6 +101,9 @@ sub merge {
             }
             when ('config_file') {
                 $self->load_child_config(@{ $config->{config_file} });
+            }
+            when ('lib') {
+                lib->import(@{ $config->{lib} });
             }
             default {
                 require Carp;
@@ -166,8 +173,9 @@ sub config_validate {
 
 sub common_rule {
     return (
-     worker      => +{ isa => 'HashRef[Str]',  xor => [qw/config_file/] },
-     config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
+        worker      => +{ isa => 'HashRef[Str]',  xor => [qw/config_file/] },
+        lib         => +{ isa => 'ArrayRef[Str]', optional => 1 },
+        config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
     )
 }
 
