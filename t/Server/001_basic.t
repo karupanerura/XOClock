@@ -13,7 +13,7 @@ use t::TestUtil::Worker::Mock;
 use AnyEvent;
 use XOClock::Server;
 use XOClock::Client;
-use Time::Piece 1.20;
+use POSIX ();
 
 my $args = +{
     hoge => 'fuga'
@@ -31,7 +31,7 @@ ignore_logminimal {
             );
             my $res = $client->enqueue(
                 name      => 'Mock',
-                datetime  => (Time::Piece->gmtime + 1)->strftime('%Y-%m-%d %H:%M:%S'),
+                datetime  => POSIX::strftime('%Y-%m-%d %H:%M:%S', gmtime(time + 1)),
                 args      => $args,
             )->recv;
             is $res, 'ok', 'enqueue success.';

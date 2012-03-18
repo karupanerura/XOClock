@@ -13,6 +13,8 @@ use Class::Accessor::Lite (
 use Data::Validator;
 use YAML::Syck ();
 use Log::Minimal;
+use File::Zglob ();
+use lib ();
 
 sub load {
     state $rule = Data::Validator->new(
@@ -65,18 +67,22 @@ sub init {
     my $self = shift;
     state $child_rule = Data::Validator->new($self->child_config_rule);
 
+    $self->worker(+{}) unless $self->worker;
     $self->marged_config(+{});
     if (exists $self->{config_file}) {
         $self->load_child_config(@{ delete $self->{config_file} });
+    }
+    if (exists $self->{lib}) {
+        lib->import(@{ delete $self->{lib} });
     }
 
     return $self;
 }
 
 sub load_child_config {
-    my($self, @files) = @_;
+    my $self = shift;
 
-    foreach my $file (@files) {
+    foreach my $file (map { File::Zglob::zglob($_) } @_) {
         unless (exists $self->marged_config->{$file}) {
             my $config = $self->_load(file => $file, type => 'child');
             $self->marged_config->{$file} = $config;
@@ -95,6 +101,9 @@ sub merge {
             }
             when ('config_file') {
                 $self->load_child_config(@{ $config->{config_file} });
+            }
+            when ('lib') {
+                lib->import(@{ $config->{lib} });
             }
             default {
                 require Carp;
@@ -164,7 +173,8 @@ sub config_validate {
 
 sub common_rule {
     return (
-        worker      => +{ isa => 'HashRef[Str]',  default => sub { +{} } },
+        worker      => +{ isa => 'HashRef[Str]',  xor => [qw/config_file/] },
+        lib         => +{ isa => 'ArrayRef[Str]', optional => 1 },
         config_file => +{ isa => 'ArrayRef[Str]', optional => 1 },
     )
 }
@@ -173,10 +183,7 @@ sub config_rule {
     my $class = shift;
 
     return (
-        max_workers => +{ isa => 'Int',     default => 4, },
-        interval    => +{ isa => 'Int',     default => 1, },
-        storage     => +{ isa => 'Str',     default => 'XOClock::Storage::Memory' },
-        storage_opt => +{ isa => 'HashRef', default => sub { +{} } },
+        max_workers => +{ isa => 'Int' },
         $class->common_rule,
     );
 }
